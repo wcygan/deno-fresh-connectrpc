@@ -1,0 +1,22 @@
+{
+  "imports": {
+    "@std/path": "jsr:@std/path@^1.0.9"
+  },
+  "tasks": {
+    "dev": "deno run --allow-run --allow-env tasks/dev.ts",
+    "up": "deno run --allow-run --allow-env tasks/up.ts",
+    "down": "deno run --allow-run --allow-env tasks/down.ts",
+    "test": "deno run --allow-run --allow-env tasks/test.ts",
+    "test:backend": "cd backend && go test ./...",
+    "test:frontend": "cd frontend && deno test -A",
+    "test:integration": "deno run --allow-run --allow-env tasks/test-integration.ts",
+    "build": "deno run --allow-run --allow-env tasks/build.ts",
+    "build:backend": "cd backend && go build -o bin/server cmd/server/main.go",
+    "build:frontend": "cd frontend && deno task build",
+    "start:backend": "cd backend && ./bin/server",
+    "start:frontend": "cd frontend && deno task start",
+    "check": "deno run --allow-run --allow-env tasks/check.ts",
+    "fmt": "deno fmt && cd backend && go fmt ./... && cd ../frontend && deno fmt",
+    "lint": "deno lint && cd backend && go vet ./... && cd ../frontend && deno lint"
+  }
+}
