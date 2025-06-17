@@ -1,0 +1,21 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@std/fmt@1": "1.0.8",
+    "jsr:@std/path@^1.0.9": "1.1.0"
+  },
+  "jsr": {
+    "@std/fmt@1.0.8": {
+      "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
+    },
+    "@std/path@1.1.0": {
+      "integrity": "ddc94f8e3c275627281cbc23341df6b8bcc874d70374f75fec2533521e3d6886"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@std/fmt@1",
+      "jsr:@std/path@^1.0.9"
+    ]
+  }
+}

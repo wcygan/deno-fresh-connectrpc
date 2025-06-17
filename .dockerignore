@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+resources/
+
+# Development
+.vscode/
+*.log
+*.tmp
+
+# Dependencies
+node_modules/
+target/
+bin/
+
+# Backend specific
+backend/bin/
+backend/*.exe
+backend/*.dll
+backend/*.so
+backend/*.dylib
+
+# Frontend specific  
+frontend/node_modules/
+frontend/_fresh/
+frontend/dist/
+
+# Testing
+coverage/
+*.coverage
+test-results/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp/
+temp/
