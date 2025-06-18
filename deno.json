@@ -4,7 +4,7 @@
     "@std/fmt/colors": "jsr:@std/fmt@^1.0.0/colors"
   },
   "tasks": {
-    "dev": "deno run --allow-run --allow-env tasks/dev.ts",
+    "dev": "deno run --allow-run --allow-env --allow-net tasks/dev.ts",
     "up": "deno run --allow-run --allow-env tasks/up.ts",
     "down": "deno run --allow-run --allow-env tasks/down.ts",
     "test": "deno run --allow-run --allow-env tasks/test.ts",

@@ -3,6 +3,13 @@
 /**
  * Development task - starts backend and frontend in development mode
  * Uses Air for Go hot reloading and Fresh dev server for frontend
+ * 
+ * Performance optimizations:
+ * - Parallel cleanup and Air detection
+ * - Parallel path checks for Air binary
+ * - Simultaneous server startup
+ * - Smart health checks instead of fixed delays
+ * - Parallel shutdown operations
  */
 
 import { join } from "@std/path";
@@ -20,23 +27,27 @@ async function isPortFree(port: number): Promise<boolean> {
 
 const projectRoot = new URL("..", import.meta.url).pathname;
 
+const startTime = performance.now();
 console.log("🚀 Starting development servers...");
 console.log("");
 
-// Clean up any existing processes on our ports
+// Clean up any existing processes on our ports (run in parallel)
 console.log("🧹 Cleaning up any existing processes...");
-try {
-  const killExistingCmd = new Deno.Command("bash", {
-    args: ["-c", "(lsof -ti :3007 && lsof -ti :8007) | xargs kill -9 2>/dev/null || true"]
-  });
-  await killExistingCmd.output();
-  await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for cleanup
-} catch {
-  // Ignore cleanup errors
-}
+const cleanupPromise = (async () => {
+  try {
+    const killExistingCmd = new Deno.Command("bash", {
+      args: ["-c", "(lsof -ti :3007 && lsof -ti :8007) | xargs kill -9 2>/dev/null || true"]
+    });
+    await killExistingCmd.output();
+    await new Promise(resolve => setTimeout(resolve, 500)); // Reduced wait time
+  } catch {
+    // Ignore cleanup errors
+  }
+})();
 
-// Check if Air is installed and return the command to use
+// Check if Air is installed and return the command to use (optimized with parallel checks)
 async function getAirCommand(): Promise<string | null> {
+  // Try PATH first (fastest)
   try {
     const cmd = new Deno.Command("air", { args: ["-v"] });
     const result = await cmd.output();
@@ -45,38 +56,60 @@ async function getAirCommand(): Promise<string | null> {
     // Not in PATH, try other locations
   }
   
-  // Try checking if air is in GOPATH/bin
-  try {
-    const goPathCmd = new Deno.Command("go", { args: ["env", "GOPATH"] });
-    const goPathResult = await goPathCmd.output();
-    if (goPathResult.success) {
-      const goPath = new TextDecoder().decode(goPathResult.stdout).trim();
-      const airPath = join(goPath, "bin", "air");
-      const cmd = new Deno.Command(airPath, { args: ["-v"] });
-      const result = await cmd.output();
-      if (result.success) return airPath;
-    }
-  } catch {
-    // Ignore error and try HOME/go/bin
-  }
+  // Run multiple path checks in parallel
+  const pathChecks = [
+    // Check GOPATH/bin
+    (async () => {
+      try {
+        const goPathCmd = new Deno.Command("go", { args: ["env", "GOPATH"] });
+        const goPathResult = await goPathCmd.output();
+        if (goPathResult.success) {
+          const goPath = new TextDecoder().decode(goPathResult.stdout).trim();
+          const airPath = join(goPath, "bin", "air");
+          const cmd = new Deno.Command(airPath, { args: ["-v"] });
+          const result = await cmd.output();
+          if (result.success) return airPath;
+        }
+      } catch {
+        // Ignore error
+      }
+      return null;
+    })(),
+    
+    // Check HOME/go/bin
+    (async () => {
+      try {
+        const homeDir = Deno.env.get("HOME");
+        if (homeDir) {
+          const airPath = join(homeDir, "go", "bin", "air");
+          const cmd = new Deno.Command(airPath, { args: ["-v"] });
+          const result = await cmd.output();
+          if (result.success) return airPath;
+        }
+      } catch {
+        // Ignore error
+      }
+      return null;
+    })()
+  ];
   
-  // Try default GOPATH/bin location
-  try {
-    const homeDir = Deno.env.get("HOME");
-    if (homeDir) {
-      const airPath = join(homeDir, "go", "bin", "air");
-      const cmd = new Deno.Command(airPath, { args: ["-v"] });
-      const result = await cmd.output();
-      if (result.success) return airPath;
+  // Return the first successful result
+  const results = await Promise.allSettled(pathChecks);
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value) {
+      return result.value;
     }
-  } catch {
-    // Final fallback
   }
   
   return null;
 }
 
-let airCommand = await getAirCommand();
+// Start Air detection in parallel with cleanup
+const airCommandPromise = getAirCommand();
+
+// Wait for both cleanup and Air detection to complete
+const [airCommand] = await Promise.all([airCommandPromise, cleanupPromise]);
+
 if (!airCommand) {
   console.log("⚠️  Air not found. Installing Air for Go hot reloading...");
   const installCmd = new Deno.Command("go", {
@@ -91,48 +124,49 @@ if (!airCommand) {
     airCommand = null;
   } else {
     console.log("✅ Air installed successfully!");
-    // Wait a moment for filesystem to sync
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    // Check again after installation
+    // Wait briefly for filesystem to sync and check again
+    await new Promise(resolve => setTimeout(resolve, 500));
     airCommand = await getAirCommand();
+    
     if (!airCommand) {
-      // Let's try to find where Go installed it
+      // Parallel search for Air binary in multiple locations
       console.log("🔍 Searching for Air binary...");
       try {
-        const goBinCmd = new Deno.Command("go", { args: ["env", "GOBIN"] });
-        const goBinResult = await goBinCmd.output();
-        const goBin = new TextDecoder().decode(goBinResult.stdout).trim();
+        const [goBinResult, goPathResult] = await Promise.all([
+          new Deno.Command("go", { args: ["env", "GOBIN"] }).output(),
+          new Deno.Command("go", { args: ["env", "GOPATH"] }).output()
+        ]);
         
-        const goPathCmd = new Deno.Command("go", { args: ["env", "GOPATH"] });
-        const goPathResult = await goPathCmd.output();
+        const goBin = new TextDecoder().decode(goBinResult.stdout).trim();
         const goPath = new TextDecoder().decode(goPathResult.stdout).trim();
         
-        // Try GOBIN first, then GOPATH/bin
+        // Try multiple paths in parallel
         const tryPaths = [
           goBin && join(goBin, "air"),
           join(goPath, "bin", "air"),
           join(Deno.env.get("HOME") || "", "go", "bin", "air")
         ].filter(Boolean);
         
-        for (const path of tryPaths) {
+        const pathTests = tryPaths.map(async (path) => {
           try {
             const stat = await Deno.stat(path);
             if (stat.isFile) {
-              // Test if it actually works
-              try {
-                const testCmd = new Deno.Command(path, { args: ["-v"] });
-                const testResult = await testCmd.output();
-                if (testResult.success) {
-                  airCommand = path;
-                  console.log("✅ Found working Air at:", path);
-                  break;
-                }
-              } catch {
-                // Air binary doesn't work
-              }
+              const testCmd = new Deno.Command(path, { args: ["-v"] });
+              const testResult = await testCmd.output();
+              if (testResult.success) return path;
             }
           } catch {
-            // File doesn't exist
+            // File doesn't exist or doesn't work
+          }
+          return null;
+        });
+        
+        const results = await Promise.allSettled(pathTests);
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value) {
+            airCommand = result.value;
+            console.log("✅ Found working Air at:", result.value);
+            break;
           }
         }
         
@@ -146,47 +180,26 @@ if (!airCommand) {
   }
 }
 
-// Start backend with Air hot reload or fallback to go run
-let backendProcess;
-
-if (airCommand) {
-  console.log("🔧 Starting Go backend with Air hot reload on port 3007...");
-  backendProcess = new Deno.Command(airCommand, {
-    args: ["-c", ".air.toml"],
-    cwd: join(projectRoot, "backend"),
-    env: {
-      ...Deno.env.toObject(),
-      PORT: "3007",
-    },
-    stdout: "piped",
-    stderr: "piped",
-  });
-} else {
-  console.log("🔧 Starting Go backend (no hot reload) on port 3007...");
-  backendProcess = new Deno.Command("go", {
-    args: ["run", "cmd/server/main.go"],
-    cwd: join(projectRoot, "backend"),
-    env: {
-      ...Deno.env.toObject(),
-      PORT: "3007",
-    },
-    stdout: "piped",
-    stderr: "piped",
-  });
-}
-
-const backendChild = backendProcess.spawn();
-
-// Give backend time to start
-await new Promise(resolve => setTimeout(resolve, 2000));
-
-console.log(`✅ Backend started ${airCommand ? '(with hot reload)' : '(no hot reload)'}`);
-console.log("🌐 Backend health: http://localhost:3007/health");
-console.log("🔌 Backend RPC: http://localhost:3007/hello.v1.GreeterService/SayHello");
-console.log("");
-
-// Start frontend in background
+// Prepare both server configurations
+console.log("🔧 Starting Go backend with Air hot reload on port 3007...");
 console.log("🌊 Starting Fresh frontend on port 8007...");
+
+const backendProcess = airCommand 
+  ? new Deno.Command(airCommand, {
+      args: ["-c", ".air.toml"],
+      cwd: join(projectRoot, "backend"),
+      env: { ...Deno.env.toObject(), PORT: "3007" },
+      stdout: "piped",
+      stderr: "piped",
+    })
+  : new Deno.Command("go", {
+      args: ["run", "cmd/server/main.go"],
+      cwd: join(projectRoot, "backend"),
+      env: { ...Deno.env.toObject(), PORT: "3007" },
+      stdout: "piped",
+      stderr: "piped",
+    });
+
 const frontendProcess = new Deno.Command("deno", {
   args: ["run", "-A", "main.ts"],
   cwd: join(projectRoot, "frontend"),
@@ -199,13 +212,67 @@ const frontendProcess = new Deno.Command("deno", {
   stderr: "piped",
 });
 
-const frontendChild = frontendProcess.spawn();
+// Start both processes simultaneously
+const [backendChild, frontendChild] = [
+  backendProcess.spawn(),
+  frontendProcess.spawn()
+];
 
-// Give frontend time to start
-await new Promise(resolve => setTimeout(resolve, 3000));
+// Smart health checking instead of fixed delays
+async function waitForBackend(): Promise<boolean> {
+  for (let i = 0; i < 20; i++) { // 10 seconds max
+    try {
+      const response = await fetch("http://localhost:3007/health", { 
+        signal: AbortSignal.timeout(500) 
+      });
+      if (response.ok) return true;
+    } catch {
+      // Service not ready yet
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  return false;
+}
 
-console.log("✅ Frontend started");
-console.log("🌐 Frontend: http://localhost:8007/");
+async function waitForFrontend(): Promise<boolean> {
+  for (let i = 0; i < 20; i++) { // 10 seconds max
+    try {
+      const response = await fetch("http://localhost:8007/", { 
+        signal: AbortSignal.timeout(500) 
+      });
+      if (response.ok) return true;
+    } catch {
+      // Service not ready yet
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+// Wait for both services to be ready in parallel
+const [backendReady, frontendReady] = await Promise.all([
+  waitForBackend(),
+  waitForFrontend()
+]);
+
+// Report startup results
+if (backendReady) {
+  console.log(`✅ Backend started ${airCommand ? '(with hot reload)' : '(no hot reload)'}`);
+  console.log("🌐 Backend health: http://localhost:3007/health");
+  console.log("🔌 Backend RPC: http://localhost:3007/hello.v1.GreeterService/SayHello");
+} else {
+  console.log("⚠️ Backend may not be ready yet (health check timeout)");
+}
+
+if (frontendReady) {
+  console.log("✅ Frontend started");
+  console.log("🌐 Frontend: http://localhost:8007/");
+} else {
+  console.log("⚠️ Frontend may not be ready yet (health check timeout)");
+}
+
+const setupTime = ((performance.now() - startTime) / 1000).toFixed(2);
+console.log(`⚡ Servers ready in ${setupTime}s`);
 console.log("");
 console.log("💡 Open http://localhost:8007/ in your browser to test the complete integration!");
 console.log("");
@@ -300,24 +367,21 @@ const shutdown = async () => {
       ]);
     }
     
-    // Try to kill any remaining processes on our ports
-    try {
-      const killBackendCmd = new Deno.Command("bash", {
+    // Try to kill any remaining processes on our ports (in parallel)
+    await Promise.allSettled([
+      new Deno.Command("bash", {
         args: ["-c", "lsof -ti :3007 | xargs kill -9 2>/dev/null || true"]
-      });
-      await killBackendCmd.output();
-      
-      const killFrontendCmd = new Deno.Command("bash", {
+      }).output(),
+      new Deno.Command("bash", {
         args: ["-c", "lsof -ti :8007 | xargs kill -9 2>/dev/null || true"]
-      });
-      await killFrontendCmd.output();
-    } catch {
-      // Ignore errors
-    }
+      }).output()
+    ]);
     
-    // Verify ports are free
-    const backendFree = await isPortFree(3007);
-    const frontendFree = await isPortFree(8007);
+    // Verify ports are free (in parallel)
+    const [backendFree, frontendFree] = await Promise.all([
+      isPortFree(3007),
+      isPortFree(8007)
+    ]);
     
     if (backendFree && frontendFree) {
       console.log("✅ All servers stopped");
