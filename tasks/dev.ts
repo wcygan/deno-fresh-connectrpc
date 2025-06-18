@@ -274,8 +274,19 @@ if (frontendReady) {
 const setupTime = ((performance.now() - startTime) / 1000).toFixed(2);
 console.log(`⚡ Servers ready in ${setupTime}s`);
 console.log("");
-console.log("💡 Open http://localhost:8007/ in your browser to test the complete integration!");
+console.log("💡 Opening http://localhost:8007/ in your browser...");
 console.log("");
+
+// Open the frontend in the browser
+try {
+  const openCmd = new Deno.Command("open", {
+    args: ["http://localhost:8007/"],
+  });
+  await openCmd.output();
+} catch (err) {
+  console.log("⚠️ Could not automatically open browser:", err.message);
+  console.log("💡 Please open http://localhost:8007/ manually in your browser");
+}
 
 // Stream logs from both processes
 const backendReader = backendChild.stdout.getReader();
