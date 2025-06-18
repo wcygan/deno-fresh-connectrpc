@@ -18,6 +18,10 @@
     "start:frontend": "cd frontend && deno task start",
     "check": "deno run --allow-run --allow-env tasks/check.ts",
     "fmt": "deno fmt && cd backend && go fmt ./... && cd ../frontend && deno fmt",
-    "lint": "deno lint && cd backend && go vet ./... && cd ../frontend && deno lint"
+    "lint": "deno lint && cd backend && go vet ./... && cd ../frontend && deno lint",
+    "install:air": "cd backend && go install github.com/air-verse/air@latest",
+    "dev:backend": "cd backend && air -c .air.toml",
+    "dev:frontend": "cd frontend && deno task dev",
+    "cleanup": "bash -c 'lsof -ti :3007 :8007 | xargs kill -9 2>/dev/null || echo \"No processes to clean up\"'"
   }
 }

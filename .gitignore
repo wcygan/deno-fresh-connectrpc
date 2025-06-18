@@ -5,6 +5,8 @@ frontend/node_modules/
 # Build outputs
 backend/bin/
 backend/server
+backend/tmp/
+backend/build-errors.log
 frontend/_fresh/
 frontend/dist/
 

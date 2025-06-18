@@ -1,13 +1,78 @@
-# deno-fresh-connectrpc
+# Fresh + ConnectRPC Demo
 
-This application demonstrates how to use Connect RPC with Deno Fresh.
+A modern full-stack demonstration of Deno Fresh 2.0 integrated with ConnectRPC, showcasing type-safe RPC communication between a Go backend and Deno Fresh frontend.
 
-We will setup a VERY SIMPLE demonstration using https://buf.build/wcygan/hello/docs/main:hello.v1 with a [Go Backend](https://buf.build/wcygan/hello/sdks/main:go from `go get buf.build/gen/go/wcygan/hello/connectrpc/go` and `go get buf.build/gen/go/wcygan/hello/protocolbuffers/go`) and a [Deno Fresh](https://fresh.deno.dev/) Frontend with [Connect Web](https://buf.build/wcygan/hello/sdks/main:typescript) (from `@buf/wcygan_hello.bufbuild_es` and `@buf/wcygan_hello.connectrpc_query-es`)
+## Quick Start
 
-Examples for how to integrate ConnectRPC with Deno Fresh can be found in [/resources](/resources) folder.
+```bash
+# Start the complete development stack
+deno task dev
+```
 
-Create separate folders `frontend` and `backend` to organize the codebase.
+That's it! This will start both the Go backend (port 3007) with Air hot reloading and Fresh frontend (port 8007) with hot reload.
 
-Create a separate `deno.json` file in the root directory to configure Deno as the scripting harness for the entire application.
+## Alternative Commands
 
-Do local testing first, then move onto Dockerizing the application.
+### Docker Development
+```bash
+# Start containerized services
+deno task up
+
+# Stop all services
+deno task down
+```
+
+### Manual Development
+```bash
+# Backend with hot reload (Air)
+deno task dev:backend
+
+# Backend without hot reload
+cd backend && go run cmd/server/main.go
+
+# Frontend only  
+deno task dev:frontend
+
+# Install Air manually if needed
+deno task install:air
+```
+
+## Testing
+
+```bash
+# Run all tests (backend + frontend)
+deno task test
+
+# Individual test suites
+deno task test:backend      # Go unit & integration tests
+deno task test:frontend     # Deno/Fresh tests
+deno task test:integration  # Cross-stack integration tests
+```
+
+## Production Build
+
+```bash
+# Build entire stack
+deno task build
+
+# Individual builds
+deno task build:backend     # Go binary
+deno task build:frontend    # Fresh static assets
+```
+
+## Architecture
+
+This application demonstrates a complete full-stack integration using:
+
+- **Frontend**: Deno Fresh 2.0 with Islands Architecture and Server-Side Rendering
+- **Backend**: Go ConnectRPC service with HTTP/JSON transport
+- **Schema**: Protocol Buffers from [buf.build/wcygan/hello](https://buf.build/wcygan/hello/docs/main:hello.v1)
+- **Communication**: Browser-compatible ConnectRPC over HTTP/JSON
+
+## Key Features
+
+- **Type Safety**: Protocol Buffers → Go types → TypeScript interfaces
+- **Modern UI**: Glassmorphism design with responsive layout
+- **Development Experience**: Hot reload, concurrent services, automated testing
+- **Production Ready**: Docker containerization with health checks
+- **Cross-Platform**: Deno task automation for consistent workflow
